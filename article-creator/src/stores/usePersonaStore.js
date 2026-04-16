@@ -2,41 +2,6 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { api } from '../services/apiClient';
 
-// ✅ 新人设默认结构（核心）
-export const createEmptyPersona = () => ({
-  id: crypto.randomUUID(),
-  name: '',
-  platform: 'toutiao',
-
-  // 🔥 新核心字段
-  role: '',
-  bio: '',
-  tone: 'professional',
-  description: '',
-  contentAngles: [],
-  openingStyle: '',
-  endingStyle: '',
-  audience: '',
-  tabooWords: [],
-  keywords: [],
-
-  createdAt: new Date().toISOString(),
-  updatedAt: new Date().toISOString(),
-
-  // ⚠️ 兼容旧 UI（后面会删）
-  age: 0,
-  occupation: '',
-  writingStyle: {
-    tone: 'professional',
-    emojiUsage: 'minimal',
-    dialect: '',
-    tabooWords: [],
-    description: '',
-  },
-  contentPreference: 'mixed',
-});
-
-// 工具：统一数组格式
 function ensureArray(value) {
   if (Array.isArray(value)) return value.filter(Boolean);
   if (typeof value === 'string') {
@@ -48,12 +13,47 @@ function ensureArray(value) {
   return [];
 }
 
-// 🔥 核心：统一结构（新旧兼容）
+function resolvePersonaId(persona) {
+  if (!persona) return '';
+  return String(persona.id || persona.personaId || '').trim();
+}
+
+export const createEmptyPersona = () => ({
+  id: crypto.randomUUID(),
+  name: '',
+  platform: 'toutiao',
+  role: '',
+  intro: '',
+  tone: 'professional',
+  audience: '',
+  titleStyle: '',
+  contentAngles: [],
+  keywords: [],
+  taboo: '',
+  prompt: '',
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+
+  // 兼容旧结构
+  bio: '',
+  description: '',
+  tabooWords: [],
+  occupation: '',
+  writingStyle: {
+    tone: 'professional',
+    emojiUsage: 'minimal',
+    dialect: '',
+    tabooWords: [],
+    description: '',
+  },
+  contentPreference: 'mixed',
+  age: 0,
+});
+
 function normalizePersona(persona) {
   if (!persona) return null;
 
   let ws = persona.writingStyle;
-
   if (typeof ws === 'string') {
     try {
       ws = JSON.parse(ws);
@@ -61,69 +61,93 @@ function normalizePersona(persona) {
       ws = {};
     }
   }
-
   ws = ws || {};
 
+  const id = resolvePersonaId(persona);
   const role = persona.role || persona.occupation || '';
+  const intro = persona.intro || persona.bio || '';
   const tone = persona.tone || ws.tone || 'professional';
-  const description = persona.description || ws.description || '';
-
-  const tabooWords = ensureArray(
-    persona.tabooWords || ws.tabooWords
-  );
+  const audience = persona.audience || '';
+  const titleStyle = persona.titleStyle || persona.headlineStyle || '';
+  const contentAngles = ensureArray(persona.contentAngles);
+  const keywords = ensureArray(persona.keywords);
+  const tabooArray = ensureArray(persona.tabooWords || ws.tabooWords);
+  const taboo = persona.taboo || tabooArray.join('、') || '';
+  const prompt =
+    persona.prompt ||
+    persona.systemPrompt ||
+    persona.description ||
+    ws.description ||
+    '';
 
   return {
-    id: String(persona.id),
+    id,
     name: persona.name || '',
     platform: persona.platform || 'toutiao',
-
-    // ✅ 新结构
     role,
-    bio: persona.bio || '',
+    intro,
     tone,
-    description,
-    contentAngles: ensureArray(persona.contentAngles),
-    openingStyle: persona.openingStyle || '',
-    endingStyle: persona.endingStyle || '',
-    audience: persona.audience || '',
-    tabooWords,
-    keywords: ensureArray(persona.keywords),
-
+    audience,
+    titleStyle,
+    contentAngles,
+    keywords,
+    taboo,
+    prompt,
     createdAt: persona.createdAt || new Date().toISOString(),
     updatedAt: persona.updatedAt || new Date().toISOString(),
 
-    // ⚠️ 兼容旧 UI（关键）
-    age: Number(persona.age) || 0,
+    // 兼容旧结构
+    bio: intro,
+    description: prompt,
+    tabooWords: tabooArray.length > 0 ? tabooArray : ensureArray(taboo),
     occupation: role,
     writingStyle: {
       tone,
       emojiUsage: ws.emojiUsage || 'minimal',
       dialect: ws.dialect || '',
-      tabooWords,
-      description,
+      tabooWords: tabooArray.length > 0 ? tabooArray : ensureArray(taboo),
+      description: prompt,
     },
     contentPreference: persona.contentPreference || 'mixed',
+    age: Number(persona.age) || 0,
   };
 }
 
-// 转换为 API 格式
 function toApiPayload(persona) {
   const p = normalizePersona(persona);
 
   return {
-    ...p,
+    id: p.id,
+    name: p.name,
+    platform: p.platform,
+    role: p.role,
+    intro: p.intro,
+    tone: p.tone,
+    audience: p.audience,
+    titleStyle: p.titleStyle,
+    contentAngles: p.contentAngles,
+    keywords: p.keywords,
+    taboo: p.taboo,
+    prompt: p.prompt,
+    createdAt: p.createdAt,
+    updatedAt: p.updatedAt,
+
+    // 兼容旧 API / 旧数据库字段
     occupation: p.role,
+    bio: p.intro,
+    description: p.prompt,
+    tabooWords: ensureArray(p.taboo),
     writingStyle: {
       tone: p.tone,
       emojiUsage: 'minimal',
       dialect: '',
-      tabooWords: p.tabooWords,
-      description: p.description,
+      tabooWords: ensureArray(p.taboo),
+      description: p.prompt,
     },
+    contentPreference: p.contentPreference || 'mixed',
+    age: Number(p.age) || 0,
   };
 }
-
-// ================= STORE =================
 
 export const usePersonaStore = create(
   persist(
@@ -133,9 +157,8 @@ export const usePersonaStore = create(
       isLoading: false,
       error: null,
 
-      // 加载人设
       loadPersonas: async () => {
-        set({ isLoading: true });
+        set({ isLoading: true, error: null });
 
         try {
           let personas = await api.getPersonas();
@@ -145,27 +168,31 @@ export const usePersonaStore = create(
 
           set({
             personas,
-            activePersonaId: personas[0]?.id || null,
+            activePersonaId: get().activePersonaId || personas[0]?.id || null,
             isLoading: false,
           });
         } catch (err) {
           set({
-            error: err.message,
+            error: err?.message || "加载人设失败",
             isLoading: false,
           });
         }
       },
 
-      // 设置当前人设
       setActivePersona: (id) => {
         set({ activePersonaId: String(id) });
       },
-
-      // 新增人设
       addPersona: async (persona) => {
+        const base = createEmptyPersona();
+
         const payload = toApiPayload({
-          ...createEmptyPersona(),
+          ...base,
           ...persona,
+          id:
+            persona?.id && String(persona.id).trim()
+              ? String(persona.id).trim()
+              : base.id,
+          updatedAt: new Date().toISOString(),
         });
 
         const res = await api.createPersona(payload);
@@ -177,45 +204,62 @@ export const usePersonaStore = create(
         }));
       },
 
-      // 更新人设
       updatePersona: async (id, updates) => {
+        const resolvedId = resolvePersonaId({ id, ...updates });
+
+        if (!resolvedId) {
+          throw new Error("当前人设缺少 id，无法更新。请刷新页面后重试。");
+        }
+
+        const current =
+          get().personas.find((p) => p.id === resolvedId) ||
+          createEmptyPersona();
+
         const payload = toApiPayload({
+          ...current,
           ...updates,
-          id,
+          id: resolvedId,
           updatedAt: new Date().toISOString(),
         });
 
-        const res = await api.updatePersona(id, payload);
+        const res = await api.updatePersona(resolvedId, payload);
         const updated = normalizePersona(res || payload);
 
         set((state) => ({
           personas: state.personas.map((p) =>
-            p.id === String(id) ? updated : p
+            p.id === resolvedId ? updated : p,
           ),
         }));
       },
 
-      // 删除
       deletePersona: async (id) => {
-        await api.deletePersona(id);
+        const resolvedId = resolvePersonaId({ id });
+
+        if (!resolvedId) {
+          throw new Error("当前人设缺少 id，无法删除。");
+        }
+
+        await api.deletePersona(resolvedId);
 
         set((state) => {
-          const next = state.personas.filter((p) => p.id !== String(id));
+          const next = state.personas.filter((p) => p.id !== resolvedId);
 
           return {
             personas: next,
-            activePersonaId: next[0]?.id || null,
+            activePersonaId:
+              state.activePersonaId === resolvedId
+                ? next[0]?.id || null
+                : state.activePersonaId,
           };
         });
       },
     }),
     {
-      name: 'persona-storage',
-    }
-  )
+      name: "persona-storage",
+    },
+  ),
 );
 
-// 当前人设 hook
 export const useActivePersona = () =>
   usePersonaStore((state) =>
     state.personas.find((p) => p.id === state.activePersonaId)

@@ -7,6 +7,7 @@ import { usePersonaStore, useActivePersona } from './stores/usePersonaStore';
 import { useArticleStore } from './stores/useArticleStore';
 
 const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Generate = lazy(() => import('./pages/Generate'));
 const PersonaLibrary = lazy(() => import('./pages/PersonaLibrary'));
 const ArticleLibrary = lazy(() => import('./pages/ArticleLibrary'));
 const Favorites = lazy(() => import('./pages/Favorites'));
@@ -15,7 +16,12 @@ const routes = [
   {
     path: '/dashboard',
     element: <Dashboard />,
-    title: '创作工作台',
+    title: '工作台',
+  },
+  {
+    path: '/generate',
+    element: <Generate />,
+    title: '内容生成',
   },
   {
     path: '/personas',
@@ -25,7 +31,7 @@ const routes = [
   {
     path: '/published',
     element: <ArticleLibrary />,
-    title: '已发布文章',
+    title: '历史记录',
   },
   {
     path: '/favorites',
@@ -40,7 +46,7 @@ function AppLayout({ sidebarCollapsed, setSidebarCollapsed }) {
 
   const currentRoute =
     routes.find((route) => route.path === location.pathname) || {
-      title: '创作工作台',
+      title: '工作台',
     };
 
   return (
@@ -55,7 +61,6 @@ function AppLayout({ sidebarCollapsed, setSidebarCollapsed }) {
           title={currentRoute.title}
           activePersona={activePersona}
           onPersonaClick={() => {
-            // 后续这里可以接“切换人设弹窗”或跳转到人设库
             console.log('open persona selector');
           }}
         />

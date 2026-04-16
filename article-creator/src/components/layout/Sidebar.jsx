@@ -1,33 +1,37 @@
 import React from "react";
 import { NavLink } from "react-router-dom";
-
 const NAV_ITEMS = [
   {
     key: "dashboard",
-    label: "创作工作台",
-    to: "/",
-    description: "标题生成、评分、自动改写",
+    label: "工作台",
+    to: "/dashboard",
+    description: "快速开始创作内容",
   },
   {
-    key: "article-library",
-    label: "文章库",
-    to: "/article-library",
-    description: "查看和管理文章",
+    key: "generate",
+    label: "内容生成",
+    to: "/generate",
+    description: "生成正文与平台版本",
+  },
+  {
+    key: "personas",
+    label: "人设库",
+    to: "/personas",
+    description: "管理写作人设模板",
+  },
+  {
+    key: "history",
+    label: "历史记录",
+    to: "/published",
+    description: "查看已生成内容",
   },
   {
     key: "favorites",
     label: "收藏夹",
     to: "/favorites",
-    description: "管理收藏内容",
-  },
-  {
-    key: "personal-library",
-    label: "个人素材库",
-    to: "/personal-library",
-    description: "沉淀个人素材和灵感",
+    description: "收藏内容管理",
   },
 ];
-
 function BrandBlock() {
   return (
     <div
@@ -54,7 +58,7 @@ function BrandBlock() {
           lineHeight: 1.7,
         }}
       >
-        标题生成 + 评分 + 自动改写
+        内容生成 + 多平台适配
       </div>
     </div>
   );

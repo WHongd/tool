@@ -1,214 +1,235 @@
-import { useState, useEffect, useMemo } from 'react';
-import { Plus, Search } from 'lucide-react';
-import { usePersonaStore } from '../../stores/usePersonaStore';
-import PersonaCard from '../../components/business/PersonaCard';
-import PersonaFormDrawer from '../../components/business/PersonaFormDrawer';
-import clsx from 'clsx';
-import { PLATFORMS, PLATFORM_NAMES } from '../../constants/platforms';
+import React, { useEffect, useState } from "react";
+import PersonaFormModal from "../components/PersonaFormModal";
 
-export default function PersonaLibrary() {
-  const {
-    personas,
-    activePersonaId,
-    setActivePersona,
-    deletePersona,
-    addPersona,
-    updatePersona,
-    loadPersonas,
-    isLoading,
-  } = usePersonaStore();
+function formatDateTime(value) {
+  if (!value) return "-";
 
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterPlatform, setFilterPlatform] = useState('all');
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return date.toLocaleString("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+export default function PersonaLibrary({ onUsePersona }) {
+  const [personas, setPersonas] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const [modalOpen, setModalOpen] = useState(false);
   const [editingPersona, setEditingPersona] = useState(null);
 
-  const platformValues = ['all', ...PLATFORMS.map((p) => p.value)];
+  const fetchPersonas = async () => {
+    try {
+      setLoading(true);
+      setError("");
+
+      const response = await fetch("/api/personas");
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "获取人设失败");
+      }
+
+      setPersonas(Array.isArray(data) ? data : []);
+    } catch (err) {
+      setError(err.message || "获取人设失败");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    loadPersonas();
-  }, [loadPersonas]);
+    fetchPersonas();
+  }, []);
 
-  const filteredPersonas = useMemo(() => {
-    const list = Array.isArray(personas) ? personas : [];
-    const keyword = searchTerm.trim().toLowerCase();
-
-    return list
-      .filter((p) => p && p.id != null)
-      .filter((p) => {
-        const name = (p.name || '').toLowerCase();
-        const role = (p.role || p.occupation || '').toLowerCase();
-        const bio = (p.bio || '').toLowerCase();
-        const audience = (p.audience || '').toLowerCase();
-
-        const keywords = Array.isArray(p.keywords)
-          ? p.keywords.join(' ').toLowerCase()
-          : '';
-
-        const angles = Array.isArray(p.contentAngles)
-          ? p.contentAngles.join(' ').toLowerCase()
-          : '';
-
-        const matchesSearch =
-          !keyword ||
-          name.includes(keyword) ||
-          role.includes(keyword) ||
-          bio.includes(keyword) ||
-          audience.includes(keyword) ||
-          keywords.includes(keyword) ||
-          angles.includes(keyword);
-
-        const matchesPlatform =
-          filterPlatform === 'all' || p.platform === filterPlatform;
-
-        return matchesSearch && matchesPlatform;
-      });
-  }, [personas, searchTerm, filterPlatform]);
-
-  const handleOpenNew = () => {
+  const handleCreate = () => {
     setEditingPersona(null);
-    setIsDrawerOpen(true);
+    setModalOpen(true);
   };
 
   const handleEdit = (persona) => {
     setEditingPersona(persona);
-    setIsDrawerOpen(true);
+    setModalOpen(true);
   };
 
-  const handleSubmit = async (personaData) => {
-    try {
-      if (editingPersona) {
-        await updatePersona(editingPersona.id, personaData);
-      } else {
-        await addPersona(personaData);
-      }
-
-      setIsDrawerOpen(false);
-      setEditingPersona(null);
-      await loadPersonas();
-    } catch (error) {
-      console.error('保存失败:', error);
-      alert('保存失败，请重试');
-    }
-  };
-
-  const handleDelete = async (personaId) => {
-    const confirmed = window.confirm('确定删除该人设吗？');
+  const handleDelete = async (id) => {
+    const confirmed = window.confirm("确认删除这个人设吗？");
     if (!confirmed) return;
 
     try {
-      await deletePersona(personaId);
-    } catch (error) {
-      console.error('删除失败:', error);
-      alert('删除失败，请重试');
+      const response = await fetch(`/api/personas/${id}`, {
+        method: "DELETE",
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "删除失败");
+      }
+
+      await fetchPersonas();
+    } catch (err) {
+      window.alert(err.message || "删除失败");
     }
   };
 
-  if (isLoading && filteredPersonas.length === 0) {
-    return <div className="p-6 text-center">加载人设中...</div>;
-  }
+  const handleUsePersona = (persona) => {
+    if (typeof onUsePersona === "function") {
+      onUsePersona(persona);
+      return;
+    }
+
+    try {
+      localStorage.setItem("selectedPersona", JSON.stringify(persona));
+      window.alert("已带入人设，可在生成页读取 selectedPersona 使用。");
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const handleModalSuccess = async () => {
+    setModalOpen(false);
+    setEditingPersona(null);
+    await fetchPersonas();
+  };
+
+  const handleModalClose = () => {
+    setModalOpen(false);
+    setEditingPersona(null);
+  };
 
   return (
-    <div className="p-6">
-      {/* 顶部 */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">人设库</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            管理不同平台的内容账号模板，用于驱动 AI 写作风格。
-          </p>
-        </div>
-
-        <button
-          onClick={handleOpenNew}
-          className="flex items-center space-x-2 px-4 py-2 bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition"
-        >
-          <Plus size={18} />
-          <span>新建人设</span>
-        </button>
-      </div>
-
-      {/* 筛选与搜索 */}
-      <div className="flex flex-col lg:flex-row lg:items-center gap-4 mb-6">
-        <div className="flex flex-wrap gap-2">
-          {platformValues.map((platform) => (
-            <button
-              key={platform}
-              onClick={() => setFilterPlatform(platform)}
-              className={clsx(
-                'px-3 py-1 rounded-full text-sm font-medium transition',
-                filterPlatform === platform
-                  ? 'bg-brand-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              )}
-            >
-              {platform === 'all' ? '全部平台' : PLATFORM_NAMES[platform]}
-            </button>
-          ))}
-        </div>
-
-        <div className="flex-1 relative">
-          <Search
-            className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
-            size={18}
-          />
-          <input
-            type="text"
-            placeholder="搜索名称、角色定位、简介、关键词..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-100 focus:border-brand-500"
-          />
-        </div>
-      </div>
-
-      {/* 列表 */}
-      {filteredPersonas.length === 0 ? (
-        <div className="bg-white rounded-xl border border-gray-200 p-10 text-center">
-          <div className="text-lg font-medium text-gray-800">还没有匹配的人设</div>
-          <div className="text-sm text-gray-500 mt-2">
-            你可以先新建一个平台型人设，比如“头条｜社会观察者”。
+    <div className="min-h-full bg-gray-50 p-4 md:p-6">
+      <div className="mx-auto max-w-7xl">
+        <div className="mb-5 flex items-center justify-between gap-4">
+          <div>
+            <h1 className="text-xl font-semibold text-gray-900">人设库</h1>
+            <p className="mt-1 text-sm text-gray-500">
+              展示全部人设，支持快速编辑与带入生成
+            </p>
           </div>
+
           <button
-            onClick={handleOpenNew}
-            className="mt-5 inline-flex items-center space-x-2 px-4 py-2 bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition"
+            type="button"
+            onClick={handleCreate}
+            className="shrink-0 rounded-lg bg-black px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
           >
-            <Plus size={16} />
-            <span>立即新建</span>
+            新建人设
           </button>
         </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          <div
-            onClick={handleOpenNew}
-            className="bg-gray-50 rounded-lg border-2 border-dashed border-gray-300 flex flex-col items-center justify-center p-8 cursor-pointer hover:border-brand-500 hover:bg-gray-100 transition"
-          >
-            <Plus size={32} className="text-gray-400 mb-2" />
-            <p className="text-sm text-gray-500 font-medium">创建新人设</p>
+
+        {loading && (
+          <div className="rounded-xl border border-gray-200 bg-white py-10 text-center text-sm text-gray-500">
+            正在加载人设...
           </div>
+        )}
 
-          {filteredPersonas.map((persona) => (
-            <PersonaCard
-              key={persona.id}
-              persona={persona}
-              isActive={persona.id === activePersonaId}
-              onSetActive={() => setActivePersona(persona.id)}
-              onEdit={() => handleEdit(persona)}
-              onDelete={() => handleDelete(persona.id)}
-            />
-          ))}
-        </div>
-      )}
+        {!loading && error && (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-4 text-sm text-red-600">
+            {error}
+          </div>
+        )}
 
-      {/* 抽屉表单 */}
-      <PersonaFormDrawer
-        isOpen={isDrawerOpen}
-        onClose={() => {
-          setIsDrawerOpen(false);
-          setEditingPersona(null);
-        }}
-        initialData={editingPersona}
-        onSubmit={handleSubmit}
+        {!loading && !error && personas.length === 0 && (
+          <div className="rounded-xl border border-dashed border-gray-300 bg-white py-12 text-center text-sm text-gray-500">
+            暂无人设，先创建一个吧
+          </div>
+        )}
+
+        {!loading && !error && personas.length > 0 && (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {personas.map((persona) => (
+              <div
+                key={persona.id}
+                className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm transition hover:shadow-md"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <h3 className="truncate text-sm font-semibold text-gray-900">
+                      {persona.name || "未命名人设"}
+                    </h3>
+                    <p className="mt-1 truncate text-xs text-gray-500">
+                      {persona.role || "暂无角色描述"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {persona.tone ? (
+                    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-700">
+                      {persona.tone}
+                    </span>
+                  ) : null}
+
+                  {persona.audience ? (
+                    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-700">
+                      {persona.audience}
+                    </span>
+                  ) : null}
+
+                  {persona.tags
+                    ? String(persona.tags)
+                        .split(",")
+                        .map((tag) => tag.trim())
+                        .filter(Boolean)
+                        .slice(0, 2)
+                        .map((tag) => (
+                          <span
+                            key={tag}
+                            className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] text-blue-700"
+                          >
+                            {tag}
+                          </span>
+                        ))
+                    : null}
+                </div>
+
+                <div className="mt-3 text-[11px] text-gray-400">
+                  更新于：{formatDateTime(persona.updatedAt)}
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleUsePersona(persona)}
+                    className="rounded-md bg-black px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-90"
+                  >
+                    带入生成
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleEdit(persona)}
+                    className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-50"
+                  >
+                    编辑
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(persona.id)}
+                    className="rounded-md border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 transition hover:bg-red-50"
+                  >
+                    删除
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <PersonaFormModal
+        open={modalOpen}
+        editingPersona={editingPersona}
+        onClose={handleModalClose}
+        onSuccess={handleModalSuccess}
       />
     </div>
   );

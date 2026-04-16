@@ -1,400 +1,279 @@
-import { Fragment, useState, useEffect } from 'react';
-import { Dialog, Transition } from '@headlessui/react';
-import { X } from 'lucide-react';
-import { PLATFORMS } from '../../constants/platforms';
+import React, { useEffect, useMemo, useState } from "react";
 
-const EMPTY_FORM = {
-  name: '',
-  platform: 'toutiao',
-
-  role: '',
-  bio: '',
-
-  tone: 'professional',
-  description: '',
-
-  contentAngles: '',
-  openingStyle: '',
-  endingStyle: '',
-  audience: '',
-
-  keywords: '',
-  tabooWords: '',
+const defaultForm = {
+  name: "",
+  role: "",
+  intro: "",
+  tone: "",
+  audience: "",
+  prompt: "",
+  tags: "",
 };
 
-function toCommaText(value) {
-  if (Array.isArray(value)) return value.join(', ');
-  if (typeof value === 'string') return value;
-  return '';
+function buildPrompt(values) {
+  const sections = [
+    values.role ? `角色定位：${values.role}` : "",
+    values.intro ? `角色简介：${values.intro}` : "",
+    values.tone ? `语气风格：${values.tone}` : "",
+    values.audience ? `目标受众：${values.audience}` : "",
+  ];
+
+  return sections.filter(Boolean).join("\n");
 }
 
-function normalizeInitialData(initialData) {
-  if (!initialData) return EMPTY_FORM;
-
-  return {
-    name: initialData.name || '',
-    platform: initialData.platform || 'toutiao',
-
-    role: initialData.role || initialData.occupation || '',
-    bio: initialData.bio || '',
-
-    tone:
-      initialData.tone ||
-      initialData.writingStyle?.tone ||
-      'professional',
-
-    description:
-      initialData.description ||
-      initialData.writingStyle?.description ||
-      '',
-
-    contentAngles: toCommaText(initialData.contentAngles),
-    openingStyle: initialData.openingStyle || '',
-    endingStyle: initialData.endingStyle || '',
-    audience: initialData.audience || '',
-
-    keywords: toCommaText(initialData.keywords),
-    tabooWords: toCommaText(
-      initialData.tabooWords || initialData.writingStyle?.tabooWords
-    ),
-  };
-}
-
-function splitToArray(text) {
-  return String(text || '')
-    .split(/[,\n、]/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
-export default function PersonaFormDrawer({
-  isOpen,
+export default function PersonaFormModal({
+  open,
+  editingPersona,
   onClose,
-  initialData,
-  onSubmit,
+  onSuccess,
 }) {
-  const [formData, setFormData] = useState(EMPTY_FORM);
+  const isEdit = useMemo(() => Boolean(editingPersona?.id), [editingPersona]);
+
+  const [form, setForm] = useState(defaultForm);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    if (isOpen) {
-      setFormData(normalizeInitialData(initialData));
-    }
-  }, [initialData, isOpen]);
+    if (!open) return;
 
-  const handleChange = (field, value) => {
-    setFormData((prev) => ({
+    if (editingPersona) {
+      setForm({
+        name: editingPersona.name || "",
+        role: editingPersona.role || "",
+        intro: editingPersona.intro || "",
+        tone: editingPersona.tone || "",
+        audience: editingPersona.audience || "",
+        prompt: editingPersona.prompt || "",
+        tags: editingPersona.tags || "",
+      });
+    } else {
+      setForm(defaultForm);
+    }
+
+    setError("");
+    setSaving(false);
+  }, [open, editingPersona]);
+
+  const updateField = (key, value) => {
+    setForm((prev) => ({
       ...prev,
-      [field]: value,
+      [key]: value,
     }));
   };
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-
-    const payload = {
-      id: initialData?.id,
-      name: formData.name.trim(),
-      platform: formData.platform,
-
-      role: formData.role.trim(),
-      bio: formData.bio.trim(),
-
-      tone: formData.tone,
-      description: formData.description.trim(),
-
-      contentAngles: splitToArray(formData.contentAngles),
-      openingStyle: formData.openingStyle.trim(),
-      endingStyle: formData.endingStyle.trim(),
-      audience: formData.audience.trim(),
-
-      keywords: splitToArray(formData.keywords),
-      tabooWords: splitToArray(formData.tabooWords),
-
-      updatedAt: new Date().toISOString(),
-      createdAt: initialData?.createdAt || new Date().toISOString(),
-
-      // 兼容旧 UI / 旧逻辑
-      occupation: formData.role.trim(),
-      writingStyle: {
-        tone: formData.tone,
-        emojiUsage: 'minimal',
-        dialect: '',
-        tabooWords: splitToArray(formData.tabooWords),
-        description: formData.description.trim(),
-      },
-      contentPreference: 'mixed',
-      age: initialData?.age || 0,
-    };
-
-    onSubmit(payload);
-    onClose();
+  const handleAutoGeneratePrompt = () => {
+    const nextPrompt = buildPrompt(form);
+    updateField("prompt", nextPrompt);
   };
 
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    if (!form.name.trim()) {
+      setError("请输入人设名称");
+      return;
+    }
+
+    if (!form.role.trim()) {
+      setError("请输入角色定位");
+      return;
+    }
+
+    try {
+      setSaving(true);
+      setError("");
+
+      const payload = {
+        ...form,
+        name: form.name.trim(),
+        role: form.role.trim(),
+        intro: form.intro.trim(),
+        tone: form.tone.trim(),
+        audience: form.audience.trim(),
+        prompt: form.prompt.trim() || buildPrompt(form),
+        tags: form.tags.trim(),
+      };
+
+      const url = isEdit ? `/api/personas/${editingPersona.id}` : "/api/personas";
+      const method = isEdit ? "PUT" : "POST";
+
+      const response = await fetch(url, {
+        method,
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || (isEdit ? "更新失败" : "创建失败"));
+      }
+
+      if (typeof onSuccess === "function") {
+        onSuccess(data);
+      }
+    } catch (err) {
+      setError(err.message || (isEdit ? "更新失败" : "创建失败"));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!open) return null;
+
   return (
-    <Transition appear show={isOpen} as={Fragment}>
-      <Dialog as="div" className="relative z-50" onClose={onClose}>
-        <Transition.Child
-          as={Fragment}
-          enter="ease-out duration-300"
-          enterFrom="opacity-0"
-          enterTo="opacity-100"
-          leave="ease-in duration-200"
-          leaveFrom="opacity-100"
-          leaveTo="opacity-0"
-        >
-          <div className="fixed inset-0 bg-black/25" />
-        </Transition.Child>
-
-        <div className="fixed inset-0 overflow-y-auto">
-          <div className="flex min-h-full items-center justify-end p-0">
-            <Transition.Child
-              as={Fragment}
-              enter="ease-out duration-300"
-              enterFrom="opacity-0 translate-x-full"
-              enterTo="opacity-100 translate-x-0"
-              leave="ease-in duration-200"
-              leaveFrom="opacity-100 translate-x-0"
-              leaveTo="opacity-0 translate-x-full"
-            >
-              <Dialog.Panel className="w-full max-w-xl h-screen bg-white shadow-drawer overflow-y-auto">
-                <div className="p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <Dialog.Title className="text-lg font-semibold">
-                      {initialData ? '编辑人设' : '新建人设'}
-                    </Dialog.Title>
-                    <button
-                      onClick={onClose}
-                      className="text-gray-400 hover:text-gray-600"
-                    >
-                      <X size={20} />
-                    </button>
-                  </div>
-
-                  <form onSubmit={handleSubmit} className="space-y-5">
-                    {/* 基础信息 */}
-                    <div className="border-b pb-4">
-                      <h3 className="font-medium text-gray-900 mb-3">基础信息</h3>
-
-                      <div className="space-y-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700">
-                            人设名称 *
-                          </label>
-                          <input
-                            type="text"
-                            required
-                            value={formData.name}
-                            onChange={(e) => handleChange('name', e.target.value)}
-                            className="mt-1 w-full border border-gray-300 rounded-md p-2"
-                            placeholder="例如：头条｜社会观察者"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700">
-                            平台 *
-                          </label>
-                          <select
-                            value={formData.platform}
-                            onChange={(e) => handleChange('platform', e.target.value)}
-                            className="mt-1 w-full border border-gray-300 rounded-md p-2"
-                          >
-                            {PLATFORMS.map((p) => (
-                              <option key={p.value} value={p.value}>
-                                {p.label}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700">
-                            角色定位 *
-                          </label>
-                          <input
-                            type="text"
-                            required
-                            value={formData.role}
-                            onChange={(e) => handleChange('role', e.target.value)}
-                            className="mt-1 w-full border border-gray-300 rounded-md p-2"
-                            placeholder="例如：社会观察型作者 / 热点评论型作者 / 经验分享作者"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700">
-                            人设简介 *
-                          </label>
-                          <textarea
-                            rows={3}
-                            required
-                            value={formData.bio}
-                            onChange={(e) => handleChange('bio', e.target.value)}
-                            className="mt-1 w-full border border-gray-300 rounded-md p-2"
-                            placeholder="一句话说明这个账号主要关注什么、擅长写什么。"
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* 写作风格 */}
-                    <div className="border-b pb-4">
-                      <h3 className="font-medium text-gray-900 mb-3">写作风格</h3>
-
-                      <div className="space-y-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700">
-                            语气 *
-                          </label>
-                          <select
-                            value={formData.tone}
-                            onChange={(e) => handleChange('tone', e.target.value)}
-                            className="mt-1 w-full border border-gray-300 rounded-md p-2"
-                          >
-                            <option value="casual">口语化</option>
-                            <option value="professional">专业理性</option>
-                            <option value="emotional">情绪表达</option>
-                            <option value="sharp">直接犀利</option>
-                          </select>
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700">
-                            风格描述 *
-                          </label>
-                          <textarea
-                            rows={4}
-                            required
-                            value={formData.description}
-                            onChange={(e) => handleChange('description', e.target.value)}
-                            className="mt-1 w-full border border-gray-300 rounded-md p-2"
-                            placeholder="例如：先给结论，再拆原因，语言克制但有观点，避免空话。"
-                          />
-                          <p className="text-xs text-gray-400 mt-1">
-                            这是最关键字段之一，直接影响 AI 输出风格。
-                          </p>
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700">
-                            常写角度
-                          </label>
-                          <input
-                            type="text"
-                            value={formData.contentAngles}
-                            onChange={(e) => handleChange('contentAngles', e.target.value)}
-                            className="mt-1 w-full border border-gray-300 rounded-md p-2"
-                            placeholder="例如：社会观察, 热点解读, 普通人视角"
-                          />
-                          <p className="text-xs text-gray-400 mt-1">
-                            用逗号分隔。它决定这个账号更常从什么切口写内容。
-                          </p>
-                        </div>
-
-                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700">
-                              开头方式
-                            </label>
-                            <input
-                              type="text"
-                              value={formData.openingStyle}
-                              onChange={(e) => handleChange('openingStyle', e.target.value)}
-                              className="mt-1 w-full border border-gray-300 rounded-md p-2"
-                              placeholder="例如：先抛结论 / 先抛冲突"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700">
-                              结尾方式
-                            </label>
-                            <input
-                              type="text"
-                              value={formData.endingStyle}
-                              onChange={(e) => handleChange('endingStyle', e.target.value)}
-                              className="mt-1 w-full border border-gray-300 rounded-md p-2"
-                              placeholder="例如：总结观点 / 提建议"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* 读者与约束 */}
-                    <div>
-                      <h3 className="font-medium text-gray-900 mb-3">读者与约束</h3>
-
-                      <div className="space-y-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700">
-                            目标读者
-                          </label>
-                          <input
-                            type="text"
-                            value={formData.audience}
-                            onChange={(e) => handleChange('audience', e.target.value)}
-                            className="mt-1 w-full border border-gray-300 rounded-md p-2"
-                            placeholder="例如：普通大众读者 / 想解决问题的新手"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700">
-                            关键词
-                          </label>
-                          <input
-                            type="text"
-                            value={formData.keywords}
-                            onChange={(e) => handleChange('keywords', e.target.value)}
-                            className="mt-1 w-full border border-gray-300 rounded-md p-2"
-                            placeholder="例如：普通人, 趋势, 判断, 方法"
-                          />
-                          <p className="text-xs text-gray-400 mt-1">
-                            用逗号分隔。用于强化这个账号的表达辨识度。
-                          </p>
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700">
-                            禁忌词 / 禁忌表达
-                          </label>
-                          <input
-                            type="text"
-                            value={formData.tabooWords}
-                            onChange={(e) => handleChange('tabooWords', e.target.value)}
-                            className="mt-1 w-full border border-gray-300 rounded-md p-2"
-                            placeholder="例如：绝对, 暴富, 内幕, 保证赚钱"
-                          />
-                          <p className="text-xs text-gray-400 mt-1">
-                            用逗号分隔。用于约束 AI，减少平台风险和低质表达。
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex justify-end space-x-2 pt-4">
-                      <button
-                        type="button"
-                        onClick={onClose}
-                        className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
-                      >
-                        取消
-                      </button>
-                      <button
-                        type="submit"
-                        className="px-4 py-2 bg-brand-600 text-white rounded-md hover:bg-brand-700"
-                      >
-                        保存
-                      </button>
-                    </div>
-                  </form>
-                </div>
-              </Dialog.Panel>
-            </Transition.Child>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4">
+      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">
+              {isEdit ? "编辑人设" : "新建人设"}
+            </h2>
+            <p className="mt-1 text-sm text-gray-500">
+              维护人设名称、角色信息和生成提示词
+            </p>
           </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md px-3 py-1.5 text-sm text-gray-500 transition hover:bg-gray-100"
+          >
+            关闭
+          </button>
         </div>
-      </Dialog>
-    </Transition>
+
+        <form onSubmit={handleSubmit} className="px-5 py-5">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="md:col-span-2">
+              <label className="mb-1 block text-sm font-medium text-gray-700">
+                人设名称 <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={form.name}
+                onChange={(e) => updateField("name", e.target.value)}
+                placeholder="例如：爆款小红书成长博主"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none transition focus:border-black"
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="mb-1 block text-sm font-medium text-gray-700">
+                角色定位 <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                rows={3}
+                value={form.role}
+                onChange={(e) => updateField("role", e.target.value)}
+                placeholder="例如：一个擅长输出女性成长、自律、情绪疗愈内容的小红书博主"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none transition focus:border-black"
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="mb-1 block text-sm font-medium text-gray-700">
+                人设简介
+              </label>
+              <textarea
+                rows={3}
+                value={form.intro}
+                onChange={(e) => updateField("intro", e.target.value)}
+                placeholder="补充这个角色的背景、特点、擅长表达的方向"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none transition focus:border-black"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">
+                语气风格
+              </label>
+              <input
+                type="text"
+                value={form.tone}
+                onChange={(e) => updateField("tone", e.target.value)}
+                placeholder="例如：温暖、真诚、有力量"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none transition focus:border-black"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">
+                目标受众
+              </label>
+              <input
+                type="text"
+                value={form.audience}
+                onChange={(e) => updateField("audience", e.target.value)}
+                placeholder="例如：25-35岁女性成长用户"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none transition focus:border-black"
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="mb-1 block text-sm font-medium text-gray-700">
+                标签
+              </label>
+              <input
+                type="text"
+                value={form.tags}
+                onChange={(e) => updateField("tags", e.target.value)}
+                placeholder="多个标签用英文逗号分隔，例如：职场,成长,小红书"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none transition focus:border-black"
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <div className="mb-1 flex items-center justify-between gap-3">
+                <label className="block text-sm font-medium text-gray-700">
+                  Prompt
+                </label>
+                <button
+                  type="button"
+                  onClick={handleAutoGeneratePrompt}
+                  className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-50"
+                >
+                  根据字段自动生成
+                </button>
+              </div>
+
+              <textarea
+                rows={8}
+                value={form.prompt}
+                onChange={(e) => updateField("prompt", e.target.value)}
+                placeholder="这里填写最终用于生成内容的提示词；如果留空，保存时会根据上面的字段自动生成"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none transition focus:border-black"
+              />
+            </div>
+          </div>
+
+          {error ? (
+            <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
+              {error}
+            </div>
+          ) : null}
+
+          <div className="mt-5 flex items-center justify-end gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+            >
+              取消
+            </button>
+
+            <button
+              type="submit"
+              disabled={saving}
+              className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {saving ? "保存中..." : isEdit ? "保存修改" : "创建人设"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }

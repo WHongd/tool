@@ -1,361 +1,390 @@
-// 文件作用：文章总库页面，展示全部文章并支持按状态筛选
-import { useState, useMemo } from 'react';
-import toast from 'react-hot-toast';
-import { useArticleStore } from '../../stores/useArticleStore';
-import { usePersonaStore } from '../../stores/usePersonaStore';
-import aiService from "../../services/aiService";
-import { Eye, Trash2, Plus, BarChart3 } from 'lucide-react';
-import ManualArticleModal from '../../components/business/ManualArticleModal';
-import StyleAnalysisModal from '../../components/business/StyleAnalysisModal';
-import { PLATFORM_NAMES } from '../../constants/platforms';
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { Eye, Trash2, Copy, RotateCcw, Search } from "lucide-react";
+
+const HISTORY_KEY = "content_creator_history";
+const DRAFT_KEY = "content_creator_draft";
+
+const PLATFORM_OPTIONS = [
+  { label: "全部平台", value: "all" },
+  { label: "今日头条", value: "toutiao" },
+  { label: "微头条", value: "weitoutiao" },
+  { label: "百家号", value: "baijiahao" },
+  { label: "微信公众号", value: "wechat" },
+];
+
+const PLATFORM_NAME_MAP = {
+  toutiao: "今日头条",
+  weitoutiao: "微头条",
+  baijiahao: "百家号",
+  wechat: "微信公众号",
+};
+
+function safeParse(raw, fallback = []) {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return fallback;
+  }
+}
+
+function stripHtml(text) {
+  return String(text || "").replace(/<[^>]*>/g, "");
+}
+
+function formatDate(dateValue) {
+  if (!dateValue) return "未知时间";
+
+  try {
+    return new Date(dateValue).toLocaleString();
+  } catch {
+    return "未知时间";
+  }
+}
+
+function getPreview(content, maxLength = 140) {
+  const plain = stripHtml(content).trim();
+  if (!plain) return "暂无内容";
+  return plain.length > maxLength ? `${plain.slice(0, maxLength)}...` : plain;
+}
+
+function getWordCount(content) {
+  return stripHtml(content).replace(/\s+/g, "").length;
+}
+
+function FilterButton({ active, children, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        "rounded-full px-3 py-1 text-sm font-medium transition",
+        active
+          ? "bg-gray-900 text-white"
+          : "bg-gray-100 text-gray-700 hover:bg-gray-200",
+      ].join(" ")}
+    >
+      {children}
+    </button>
+  );
+}
+
+function ActionButton({ icon, label, onClick, danger = false }) {
+  const Icon = icon;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        "inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition",
+        danger
+          ? "border-red-200 text-red-600 hover:bg-red-50"
+          : "border-gray-200 text-gray-700 hover:bg-gray-50",
+      ].join(" ")}
+    >
+      <Icon className="h-4 w-4" />
+      {label}
+    </button>
+  );
+}
 
 export default function ArticleLibrary() {
-  const {
-    publishedArticles,
-    favorites,
-    deletePublishedArticle,
-    getArticleState,
-  } = useArticleStore();
-  const { personas, updatePersona } = usePersonaStore();
+  const navigate = useNavigate();
 
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedPersona, setSelectedPersona] = useState('all');
-  const [selectedPlatform, setSelectedPlatform] = useState('all');
-  const [selectedStatus, setSelectedStatus] = useState('all');
+  const [historyList, setHistoryList] = useState([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedPlatform, setSelectedPlatform] = useState("all");
   const [viewingArticle, setViewingArticle] = useState(null);
-  const [isManualModalOpen, setIsManualModalOpen] = useState(false);
-  const [analysisModal, setAnalysisModal] = useState({
-    isOpen: false,
-    article: null,
-    analysis: null,
-    isApplying: false,
-  });
 
-  const favoriteIds = useMemo(
-    () => new Set((favorites || []).map((item) => item.id)),
-    [favorites],
-  );
-
-  const getPersonaName = (personaId) => {
-    const p = personas.find((p) => p.id === personaId);
-    return p ? p.name : '未知人设';
+  const loadHistory = () => {
+    const list = safeParse(localStorage.getItem(HISTORY_KEY), []);
+    setHistoryList(Array.isArray(list) ? list : []);
   };
 
-  const filteredArticles = publishedArticles.filter((article) => {
-    const plainText = (article.content || '').replace(/<[^>]*>/g, '');
-    const matchesSearch =
-      article.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      plainText.toLowerCase().includes(searchTerm.toLowerCase());
+  useEffect(() => {
+    loadHistory();
+  }, []);
 
-    const matchesPersona =
-      selectedPersona === 'all' || article.personaId === selectedPersona;
+  const filteredArticles = useMemo(() => {
+    const keyword = searchTerm.trim().toLowerCase();
 
-    const matchesPlatform =
-      selectedPlatform === 'all' || article.platform === selectedPlatform;
+    return historyList.filter((item) => {
+      const title = String(item?.title || "").toLowerCase();
+      const topic = String(item?.topic || "").toLowerCase();
+      const persona = String(item?.persona || "").toLowerCase();
+      const content = stripHtml(item?.content || "").toLowerCase();
 
-    const articleState = getArticleState(article);
-    const matchesStatus =
-      selectedStatus === 'all' ||
-      (selectedStatus === 'draft' && articleState.isDraft) ||
-      (selectedStatus === 'published' && articleState.isPublished) ||
-      (selectedStatus === 'favorited' && favoriteIds.has(article.id));
+      const matchesSearch =
+        !keyword ||
+        title.includes(keyword) ||
+        topic.includes(keyword) ||
+        persona.includes(keyword) ||
+        content.includes(keyword);
 
-    return matchesSearch && matchesPersona && matchesPlatform && matchesStatus;
-  });
+      const matchesPlatform =
+        selectedPlatform === "all" || item?.platform === selectedPlatform;
 
-  const handleAnalyzeStyle = async (article) => {
-    setAnalysisModal({
-      isOpen: true,
-      article,
-      analysis: null,
-      isApplying: false,
+      return matchesSearch && matchesPlatform;
     });
+  }, [historyList, searchTerm, selectedPlatform]);
+
+  const handleCopy = async (article) => {
+    if (!article) return;
+
+    const text = `${article.title || ""}\n\n${stripHtml(article.content || "")}`;
 
     try {
-      const analysis = await analyzeArticleStyle(article.content, null);
-      setAnalysisModal((prev) => ({ ...prev, analysis }));
-    } catch (error) {
-      console.error('分析失败:', error);
-      toast.error('分析失败，请稍后重试');
-      setAnalysisModal((prev) => ({ ...prev, isOpen: false }));
+      await navigator.clipboard.writeText(text.trim());
+      window.alert("已复制");
+    } catch {
+      window.alert("复制失败，请手动复制");
     }
   };
 
-  const handleApplyStyle = async () => {
-    const { article, analysis } = analysisModal;
-    if (!article || !analysis) return;
+  const handleRegenerate = (article) => {
+    if (!article) return;
 
-    setAnalysisModal((prev) => ({ ...prev, isApplying: true }));
+    const draft = {
+      platform: article.platform || "toutiao",
+      persona: article.persona || "",
+      topic: article.topic || article.title || "",
+      contentType: article.contentType || "article",
+      wordCount: article.wordCount || "800",
+      createdAt: Date.now(),
+    };
 
-    try {
-      const targetPersona = personas.find((p) => p.id === article.personaId);
-      if (!targetPersona) throw new Error('未找到对应人设');
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+    navigate("/generate");
+  };
 
-      const updatedPersona = {
-        ...targetPersona,
-        writingStyle: {
-          ...targetPersona.writingStyle,
-          description: analysis.styleDescription,
-        },
-      };
+  const handleDelete = (id) => {
+    const confirmed = window.confirm("确定删除这条历史记录吗？");
+    if (!confirmed) return;
 
-      updatePersona(targetPersona.id, updatedPersona);
-      toast.success('人设风格已更新！');
+    const nextList = historyList.filter((item) => item.id !== id);
+    setHistoryList(nextList);
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(nextList));
 
-      setAnalysisModal({
-        isOpen: false,
-        article: null,
-        analysis: null,
-        isApplying: false,
-      });
-    } catch (error) {
-      console.error('应用失败:', error);
-      toast.error('应用失败，请重试');
-    } finally {
-      setAnalysisModal((prev) => ({ ...prev, isApplying: false }));
+    if (viewingArticle?.id === id) {
+      setViewingArticle(null);
     }
+  };
+
+  const handleClearAll = () => {
+    if (historyList.length === 0) {
+      window.alert("当前没有历史记录");
+      return;
+    }
+
+    const confirmed = window.confirm("确定清空全部历史记录吗？此操作不可恢复。");
+    if (!confirmed) return;
+
+    localStorage.removeItem(HISTORY_KEY);
+    setHistoryList([]);
+    setViewingArticle(null);
   };
 
   return (
     <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">文章总库</h1>
-        <button
-          onClick={() => setIsManualModalOpen(true)}
-          className="flex items-center space-x-2 px-4 py-2 bg-brand-600 text-white rounded-lg hover:bg-brand-700"
-        >
-          <Plus size={18} />
-          <span>手动添加</span>
-        </button>
+      <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">历史记录</h1>
+          <p className="mt-2 text-sm leading-7 text-gray-500">
+            查看你之前生成过的内容，支持搜索、复制和再次生成。
+          </p>
+        </div>
+
+        <div className="flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={() => navigate("/generate")}
+            className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-black"
+          >
+            新建内容
+          </button>
+
+          <button
+            type="button"
+            onClick={handleClearAll}
+            className="rounded-lg border border-red-200 px-4 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-50"
+          >
+            清空历史
+          </button>
+        </div>
       </div>
 
-      <div className="flex flex-wrap gap-4 mb-6">
-        <input
-          type="text"
-          placeholder="搜索标题或内容..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="px-3 py-2 border border-gray-300 rounded-lg w-64"
-        />
-
-        <select
-          value={selectedPersona}
-          onChange={(e) => setSelectedPersona(e.target.value)}
-          className="px-3 py-2 border border-gray-300 rounded-lg"
-        >
-          <option value="all">所有人设</option>
-          {personas.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
+      <div className="mb-6 rounded-2xl border border-gray-200 bg-white p-4">
+        <div className="mb-4 flex flex-wrap gap-2">
+          {PLATFORM_OPTIONS.map((item) => (
+            <FilterButton
+              key={item.value}
+              active={selectedPlatform === item.value}
+              onClick={() => setSelectedPlatform(item.value)}
+            >
+              {item.label}
+            </FilterButton>
           ))}
-        </select>
+        </div>
 
-        <select
-          value={selectedPlatform}
-          onChange={(e) => setSelectedPlatform(e.target.value)}
-          className="px-3 py-2 border border-gray-300 rounded-lg"
-        >
-          <option value="all">全部平台</option>
-          <option value="weitoutiao">微头条</option>
-          <option value="toutiao">今日头条</option>
-          <option value="baijiahao">百家号</option>
-        </select>
-
-        <select
-          value={selectedStatus}
-          onChange={(e) => setSelectedStatus(e.target.value)}
-          className="px-3 py-2 border border-gray-300 rounded-lg"
-        >
-          <option value="all">全部状态</option>
-          <option value="draft">草稿</option>
-          <option value="published">已发布</option>
-          <option value="favorited">已收藏</option>
-        </select>
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          <input
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="搜索标题、主题、人设、正文内容..."
+            className="w-full rounded-lg border border-gray-300 py-2 pl-10 pr-4 focus:border-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-100"
+          />
+        </div>
       </div>
 
       {filteredArticles.length === 0 ? (
-        <div className="text-center py-12 text-gray-500">
-          暂无符合条件的文章。
+        <div className="rounded-2xl border border-dashed border-gray-300 bg-white px-6 py-14 text-center">
+          <div className="mb-2 text-lg font-semibold text-gray-900">
+            暂无历史记录
+          </div>
+          <p className="mx-auto max-w-xl text-sm leading-7 text-gray-500">
+            先去生成一篇内容，生成完成后就会自动出现在这里。
+          </p>
+
+          <button
+            type="button"
+            onClick={() => navigate("/generate")}
+            className="mt-5 rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-black"
+          >
+            去生成内容
+          </button>
         </div>
       ) : (
-        <div className="space-y-4">
-          {filteredArticles.map((article, index) => {
-            const articleState = getArticleState(article);
-
-            return (
-              <div
-                key={article.id}
-                className="bg-white rounded-lg shadow-card p-4"
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center space-x-3 mb-2 flex-wrap">
-                      <span className="text-sm text-gray-500">#{index + 1}</span>
-
-                      <span className="text-xs px-2 py-1 bg-gray-100 rounded-full">
-                        {getPersonaName(article.personaId)}
-                      </span>
-
-                      <span className="text-xs px-2 py-1 bg-gray-100 rounded-full">
-                        {PLATFORM_NAMES[article.platform] || article.platform}
-                      </span>
-
-                      <span className="text-xs px-2 py-1 bg-gray-100 rounded-full">
-                        {article.aiProvider === "deepseek"
-                          ? "DeepSeek"
-                          : article.aiProvider === "volc"
-                            ? "豆包"
-                            : "AI来源未知"}
-                      </span>
-
-                      <span className="text-xs px-2 py-1 bg-blue-50 text-blue-600 rounded-full">
-                        {articleState.label}
-                      </span>
-
-                      <span className="text-xs text-gray-400">
-                        {new Date(
-                          article.publishedAt || article.createdAt,
-                        ).toLocaleString()}
-                      </span>
-                    </div>
-
-                    <h3 className="font-semibold text-gray-900">
-                      {article.title}
-                    </h3>
-
-                    <p className="text-sm text-gray-600 mt-1 line-clamp-2">
-                      {(article.content || "")
-                        .replace(/<[^>]*>/g, "")
-                        .substring(0, 150)}
-                      ...
-                    </p>
-
-                    <div className="flex flex-wrap items-center gap-4 mt-3 text-xs text-gray-500">
-                      <span>状态：{articleState.label}</span>
-
-                      <span>
-                        AI：
-                        {article.aiProvider === "deepseek"
-                          ? "DeepSeek"
-                          : article.aiProvider === "volc"
-                            ? "豆包"
-                            : "未知"}
-                      </span>
-
-                      <span>
-                        平台：
-                        {PLATFORM_NAMES[article.platform] || article.platform}
-                      </span>
-
-                      <span>
-                        发布时间：
-                        {article.publishedAt
-                          ? new Date(article.publishedAt).toLocaleString()
-                          : '未发布'}
-                      </span>
-
-                      <span>
-                        字数：
-                        {(article.content || "").replace(/<[^>]*>/g, "").length}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex space-x-2">
-                    <button
-                      onClick={() => setViewingArticle(article)}
-                      className="p-2 text-gray-500 hover:text-brand-600"
-                      title="查看全文"
-                    >
-                      <Eye size={18} />
-                    </button>
-
-                    <button
-                      onClick={() => handleAnalyzeStyle(article)}
-                      className="p-2 text-gray-500 hover:text-brand-600"
-                      title="分析风格"
-                    >
-                      <BarChart3 size={18} />
-                    </button>
-
-                    <button
-                      onClick={async () => {
-                        if (window.confirm("确定删除这篇文章吗？")) {
-                          try {
-                            await deletePublishedArticle(article.id);
-                            toast.success("文章已删除");
-                          } catch (error) {
-                            toast.error(`删除失败：${error.message}`);
-                          }
-                        }
-                      }}
-                      className="p-2 text-gray-500 hover:text-red-600"
-                      title="删除"
-                    >
-                      <Trash2 size={18} />
-                    </button>
-                  </div>
-                </div>
+        <div className="grid gap-5 xl:grid-cols-2">
+          {filteredArticles.map((article, index) => (
+            <div
+              key={article.id || index}
+              className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm"
+            >
+              <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
+                <span className="rounded-full bg-gray-100 px-2.5 py-1 font-medium text-gray-700">
+                  #{index + 1}
+                </span>
+                <span className="rounded-full bg-blue-50 px-2.5 py-1 font-medium text-blue-700">
+                  {PLATFORM_NAME_MAP[article.platform] || article.platform || "未知平台"}
+                </span>
+                <span className="rounded-full bg-emerald-50 px-2.5 py-1 font-medium text-emerald-700">
+                  {article.persona || "未设置人设"}
+                </span>
+                <span className="rounded-full bg-purple-50 px-2.5 py-1 font-medium text-purple-700">
+                  {article.contentType || "article"}
+                </span>
               </div>
-            );
-          })}
+
+              <h3 className="mb-2 text-lg font-bold leading-8 text-gray-900">
+                {article.title || "未命名标题"}
+              </h3>
+
+              <div className="mb-3 text-sm leading-7 text-gray-500">
+                主题：{article.topic || "未填写主题"}
+              </div>
+
+              <p className="mb-4 text-sm leading-7 text-gray-700">
+                {getPreview(article.content)}
+              </p>
+
+              <div className="mb-4 grid gap-2 text-sm text-gray-500 sm:grid-cols-2">
+                <div>字数：{getWordCount(article.content)}</div>
+                <div>时间：{formatDate(article.createdAt)}</div>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <ActionButton
+                  icon={Eye}
+                  label="查看全文"
+                  onClick={() => setViewingArticle(article)}
+                />
+                <ActionButton
+                  icon={Copy}
+                  label="复制"
+                  onClick={() => handleCopy(article)}
+                />
+                <ActionButton
+                  icon={RotateCcw}
+                  label="再次生成"
+                  onClick={() => handleRegenerate(article)}
+                />
+                <ActionButton
+                  icon={Trash2}
+                  label="删除"
+                  danger
+                  onClick={() => handleDelete(article.id)}
+                />
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
-      {viewingArticle && (
+      {viewingArticle ? (
         <div
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
           onClick={() => setViewingArticle(null)}
         >
           <div
-            className="bg-white rounded-lg max-w-2xl w-full max-h-[80vh] overflow-y-auto p-6"
+            className="max-h-[90vh] w-full max-w-4xl overflow-auto rounded-2xl bg-white p-6 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-bold">{viewingArticle.title}</h2>
+            <div className="mb-4 flex items-start justify-between gap-4">
+              <div>
+                <div className="mb-2 flex flex-wrap gap-2 text-xs">
+                  <span className="rounded-full bg-blue-50 px-2.5 py-1 font-medium text-blue-700">
+                    {PLATFORM_NAME_MAP[viewingArticle.platform] ||
+                      viewingArticle.platform ||
+                      "未知平台"}
+                  </span>
+                  <span className="rounded-full bg-emerald-50 px-2.5 py-1 font-medium text-emerald-700">
+                    {viewingArticle.persona || "未设置人设"}
+                  </span>
+                </div>
+
+                <h2 className="text-2xl font-bold leading-9 text-gray-900">
+                  {viewingArticle.title || "未命名标题"}
+                </h2>
+
+                <div className="mt-2 text-sm text-gray-500">
+                  主题：{viewingArticle.topic || "未填写主题"} ｜ 创建时间：
+                  {formatDate(viewingArticle.createdAt)}
+                </div>
+              </div>
+
               <button
+                type="button"
                 onClick={() => setViewingArticle(null)}
-                className="text-gray-500"
+                className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-500 transition hover:bg-gray-50"
               >
-                ✕
+                关闭
               </button>
             </div>
 
-            <div
-              className="article-content"
-              dangerouslySetInnerHTML={{ __html: viewingArticle.content }}
-            />
+            <div className="mb-4 flex flex-wrap gap-2">
+              <ActionButton
+                icon={Copy}
+                label="复制全文"
+                onClick={() => handleCopy(viewingArticle)}
+              />
+              <ActionButton
+                icon={RotateCcw}
+                label="再次生成"
+                onClick={() => handleRegenerate(viewingArticle)}
+              />
+            </div>
 
-            <div className="mt-4 text-right text-xs text-gray-400">
-              发布时间：{" "}
-              {viewingArticle.publishedAt
-                ? new Date(viewingArticle.publishedAt).toLocaleString()
-                : "未发布"}
+            <div className="rounded-xl border border-gray-200 bg-gray-50 p-5">
+              <div className="mb-3 text-sm font-semibold text-gray-500">正文</div>
+              <div className="whitespace-pre-wrap text-sm leading-8 text-gray-800">
+                {stripHtml(viewingArticle.content || "") || "暂无正文"}
+              </div>
             </div>
           </div>
         </div>
-      )}
-
-      <ManualArticleModal
-        isOpen={isManualModalOpen}
-        onClose={() => setIsManualModalOpen(false)}
-      />
-
-      <StyleAnalysisModal
-        isOpen={analysisModal.isOpen}
-        onClose={() =>
-          setAnalysisModal({
-            isOpen: false,
-            article: null,
-            analysis: null,
-            isApplying: false,
-          })
-        }
-        analysis={analysisModal.analysis}
-        onApply={handleApplyStyle}
-        isApplying={analysisModal.isApplying}
-      />
+      ) : null}
     </div>
   );
 }
