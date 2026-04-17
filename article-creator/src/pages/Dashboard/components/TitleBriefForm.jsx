@@ -10,45 +10,48 @@ export default function TitleBriefForm(props) {
   } = props;
 
   return (
-    <div className="space-y-4">
-      <div>
-        <label className="mb-2 block text-sm font-medium text-gray-700">
-          主题
-        </label>
+    <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+      <div className="space-y-4">
         <textarea
           value={topic}
           onChange={(e) => setTopic(e.target.value)}
-          placeholder="例如：为什么普通人做公众号，先别急着追爆款"
+          placeholder="输入这篇内容想写的主题"
           rows={4}
-          className="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm outline-none focus:border-gray-900"
+          className="w-full rounded-xl border border-gray-300 px-4 py-4 text-sm leading-6 outline-none focus:border-gray-900"
         />
-      </div>
 
-      <div>
-        <label className="mb-2 block text-sm font-medium text-gray-700">
-          发布平台
-        </label>
-        <select
-          value={platform}
-          onChange={(e) => setPlatform(e.target.value)}
-          className="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm"
-        >
-          {platformOptions.map((item) => (
-            <option key={item.value} value={item.value}>
-              {item.label}
-            </option>
-          ))}
-        </select>
-      </div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap gap-2">
+            {platformOptions.map((item) => {
+              const active = platform === item.value;
 
-      <button
-        type="button"
-        onClick={onGenerate}
-        disabled={loading}
-        className="w-full rounded-xl bg-gray-900 px-4 py-3 text-sm font-medium text-white disabled:opacity-60"
-      >
-        {loading ? "生成中..." : "生成标题"}
-      </button>
-    </div>
+              return (
+                <button
+                  key={item.value}
+                  type="button"
+                  onClick={() => setPlatform(item.value)}
+                  className={`rounded-full px-4 py-2 text-sm transition ${
+                    active
+                      ? "bg-gray-900 text-white"
+                      : "border border-gray-300 bg-white text-gray-700 hover:border-gray-400"
+                  }`}
+                >
+                  {item.label}
+                </button>
+              );
+            })}
+          </div>
+
+          <button
+            type="button"
+            onClick={onGenerate}
+            disabled={loading || !topic.trim()}
+            className="rounded-xl bg-gray-900 px-4 py-3 text-sm font-medium text-white disabled:opacity-60 sm:min-w-[120px]"
+          >
+            {loading ? "生成中..." : "生成标题"}
+          </button>
+        </div>
+      </div>
+    </section>
   );
 }
