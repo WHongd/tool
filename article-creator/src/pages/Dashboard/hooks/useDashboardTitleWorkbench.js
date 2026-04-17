@@ -3,7 +3,7 @@ import aiService from "../../../services/aiService";
 import {
   findCandidateByTitle,
   getBestTitleItem,
-   getTitleCandidates,
+  getTitleCandidates,
   getTitleText,
   getTopThreeCandidates,
   normalizeTitleItem,
@@ -21,6 +21,23 @@ const DEFAULT_PLATFORM = "wechat";
 const DEFAULT_PREFERRED_STYLE = "balanced";
 const DEFAULT_TARGET = "trust";
 const FIXED_CANDIDATE_COUNT = 3;
+
+function buildOpeningDraft({ topic, articleTitle }) {
+  return `很多人一开始看到“${articleTitle}”这个问题时，第一反应往往是先去找方法、找案例、找捷径，但真正做起来才会发现，最关键的问题常常不是执行得不够，而是一开始理解错了重点。
+
+围绕这个主题，真正值得先想清楚的，是为什么大多数人会在起步阶段就走偏，以及这种偏差会在后续带来什么问题。
+
+接下来可以从三个方面展开：
+1. 为什么这个问题很容易被误判
+2. 大多数人最常见的错误动作是什么
+3. 更稳妥、更适合普通人的进入方式应该怎么做
+
+${
+  topic?.trim()
+    ? `如果把主题进一步落到“${topic.trim()}”上，你会发现，真正影响结果的，往往不是表面上的技巧，而是你一开始如何理解这件事、如何判断优先级，以及是否选对了切入方式。`
+    : ""
+}`;
+}
 
 export function useDashboardTitleWorkbench() {
   const styleOptions = useMemo(() => {
@@ -53,10 +70,12 @@ export function useDashboardTitleWorkbench() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailResult, setDetailResult] = useState(null);
   const [selectedTitle, setSelectedTitle] = useState("");
-const candidates = useMemo(
-  () => getTopThreeCandidates(titleAnalysisResult),
-  [titleAnalysisResult]
-);
+  const [contentLoading, setContentLoading] = useState(false);
+
+  const candidates = useMemo(
+    () => getTopThreeCandidates(titleAnalysisResult),
+    [titleAnalysisResult]
+  );
 
   const bestTitleItem = useMemo(() => {
     const normalized = normalizeTitleItem(getBestTitleItem(titleAnalysisResult));
@@ -164,6 +183,22 @@ const candidates = useMemo(
     }
   };
 
+  const handleGenerateOpening = async () => {
+    if (!articleTitle) return;
+
+    setContentLoading(true);
+    try {
+      const opening = buildOpeningDraft({
+        topic,
+        articleTitle,
+      });
+
+      setArticleContent(opening);
+    } finally {
+      setContentLoading(false);
+    }
+  };
+
   return {
     styleOptions,
     targetOptions,
@@ -189,6 +224,7 @@ const candidates = useMemo(
     detailLoading,
     detailResult,
     selectedTitle,
+    contentLoading,
 
     candidates,
     bestTitleItem,
@@ -200,5 +236,6 @@ const candidates = useMemo(
     handlePickTitle,
     handleOpenDetail,
     handleUseBestTitle,
+    handleGenerateOpening,
   };
 }
