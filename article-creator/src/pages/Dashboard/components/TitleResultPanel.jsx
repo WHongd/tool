@@ -1,19 +1,13 @@
 import { getTitleText, normalizeTitleItem } from "../utils/dashboardTitleMappers";
 
 export default function TitleResultPanel({
-  result,
+  candidates = [],
   loading,
   error,
   onPickTitle,
   onViewDetail,
   onOpenModal,
 }) {
-  const candidates = Array.isArray(result?.data?.candidates)
-    ? result.data.candidates
-    : Array.isArray(result?.candidates)
-      ? result.candidates
-      : [];
-
   return (
     <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
       <div className="flex items-center justify-between gap-3">

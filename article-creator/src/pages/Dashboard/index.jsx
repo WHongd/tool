@@ -40,7 +40,7 @@ export default function Dashboard() {
 
           <div className="space-y-6">
             <TitleResultPanel
-              result={vm.titleAnalysisResult}
+              candidates={vm.candidates}
               loading={vm.titleLoading}
               error={vm.titleAnalysisError}
               onPickTitle={vm.handlePickTitle}

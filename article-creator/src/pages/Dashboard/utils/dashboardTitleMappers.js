@@ -4,18 +4,15 @@ export function getTitleCandidates(result) {
   return [];
 }
 
-export function getBestTitleItem(result) {
-  const best = result?.data?.bestTitle ?? result?.bestTitle ?? null;
+export function getScoreValue(score) {
+  if (typeof score === "number") return score;
 
-  if (!best) {
-    return getTitleCandidates(result)[0] || null;
+  if (score && typeof score === "object") {
+    if (typeof score.overall === "number") return score.overall;
+    if (typeof score.total === "number") return score.total;
   }
 
-  if (typeof best === "string") {
-    return { title: best };
-  }
-
-  return best;
+  return -1;
 }
 
 export function getTitleText(item) {
@@ -34,6 +31,8 @@ export function normalizeTitleItem(item) {
       style: "",
       platformFit: "",
       suggestion: "",
+      score: null,
+      raw: item,
     };
   }
 
@@ -55,7 +54,55 @@ export function normalizeTitleItem(item) {
   };
 }
 
+export function pickTopTitleByStyle(items = []) {
+  const normalizedItems = items
+    .map((item) => normalizeTitleItem(item))
+    .filter((item) => item?.title);
+
+  const grouped = new Map();
+
+  normalizedItems.forEach((item) => {
+    const styleKey = item.style || "__default__";
+    const current = grouped.get(styleKey);
+
+    if (!current) {
+      grouped.set(styleKey, item);
+      return;
+    }
+
+    if (getScoreValue(item.score) > getScoreValue(current.score)) {
+      grouped.set(styleKey, item);
+    }
+  });
+
+  return Array.from(grouped.values());
+}
+
+export function getTopThreeCandidates(result) {
+  const rawCandidates = getTitleCandidates(result);
+
+  if (!rawCandidates.length) return [];
+
+  const stylePicked = pickTopTitleByStyle(rawCandidates);
+
+  return stylePicked.slice(0, 3);
+}
+
+export function getBestTitleItem(result) {
+  const best = result?.data?.bestTitle ?? result?.bestTitle ?? null;
+
+  if (!best) {
+    return getTopThreeCandidates(result)[0] || null;
+  }
+
+  if (typeof best === "string") {
+    return { title: best };
+  }
+
+  return best;
+}
+
 export function findCandidateByTitle(result, title) {
-  const candidates = getTitleCandidates(result);
+  const candidates = getTopThreeCandidates(result);
   return candidates.find((item) => getTitleText(item) === title) || null;
 }

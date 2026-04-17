@@ -3,6 +3,7 @@ import aiService from "../../../services/aiService";
 import {
   findCandidateByTitle,
   getBestTitleItem,
+   getTitleCandidates,
   getTitleText,
   getTopThreeCandidates,
   normalizeTitleItem,
