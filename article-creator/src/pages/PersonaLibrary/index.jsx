@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import PersonaFormModal from "../components/PersonaFormModal";
+import PersonaFormModal from "../../components/PersonaFormModal";
 
 function formatDateTime(value) {
   if (!value) return "-";

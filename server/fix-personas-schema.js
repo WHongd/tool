@@ -1,8 +1,9 @@
 const path = require("path");
 const sqlite3 = require("sqlite3").verbose();
 
-// 按你的实际数据库路径修改
-const dbPath = path.resolve(__dirname, "./database.sqlite");
+// 你的仓库结构是：tool/server + tool/database.sqlite
+// 所以 server 目录下脚本应指向上一级数据库文件
+const dbPath = path.resolve(__dirname, "../database.sqlite");
 const db = new sqlite3.Database(dbPath);
 
 function run(sql, params = []) {
@@ -23,28 +24,29 @@ function all(sql, params = []) {
   });
 }
 
+async function ensureColumn(tableName, columnName, definition) {
+  const columns = await all(`PRAGMA table_info(${tableName})`);
+  const columnNames = columns.map((item) => item.name);
+
+  if (!columnNames.includes(columnName)) {
+    console.log(`${tableName} 表缺少 ${columnName} 字段，开始补充...`);
+    await run(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
+  } else {
+    console.log(`${tableName}.${columnName} 已存在，跳过。`);
+  }
+}
+
 async function main() {
   try {
-    console.log("开始检查 personas 表结构...");
+    console.log("开始检查并修复数据库字段...");
 
-    const columns = await all(`PRAGMA table_info(personas)`);
-    const columnNames = columns.map((item) => item.name);
+    // personas
+    await ensureColumn("personas", "name", "TEXT");
+    await ensureColumn("personas", "tags", "TEXT");
+    await ensureColumn("personas", "created_at", "DATETIME DEFAULT CURRENT_TIMESTAMP");
+    await ensureColumn("personas", "updated_at", "DATETIME DEFAULT CURRENT_TIMESTAMP");
 
-    if (!columnNames.includes("name")) {
-      console.log("缺少 name 字段，开始补充...");
-      await run(`ALTER TABLE personas ADD COLUMN name TEXT`);
-    } else {
-      console.log("name 字段已存在，跳过。");
-    }
-
-    if (!columnNames.includes("tags")) {
-      console.log("缺少 tags 字段，开始补充...");
-      await run(`ALTER TABLE personas ADD COLUMN tags TEXT`);
-    } else {
-      console.log("tags 字段已存在，跳过。");
-    }
-
-    console.log("开始回填 name ...");
+    console.log("开始回填 personas.name ...");
     await run(`
       UPDATE personas
       SET name = CASE
@@ -54,14 +56,65 @@ async function main() {
       WHERE name IS NULL OR TRIM(name) = ''
     `);
 
-    console.log("开始补齐 updated_at ...");
+    console.log("开始补齐 personas.created_at ...");
+    await run(`
+      UPDATE personas
+      SET created_at = CURRENT_TIMESTAMP
+      WHERE created_at IS NULL OR TRIM(created_at) = ''
+    `);
+
+    console.log("开始补齐 personas.updated_at ...");
     await run(`
       UPDATE personas
       SET updated_at = CURRENT_TIMESTAMP
       WHERE updated_at IS NULL OR TRIM(updated_at) = ''
     `);
 
-    console.log("personas 表修复完成。");
+    // articles
+    const articleTables = await all(`
+      SELECT name
+      FROM sqlite_master
+      WHERE type = 'table' AND name = 'articles'
+    `);
+
+    if (articleTables.length > 0) {
+      await ensureColumn("articles", "created_at", "DATETIME DEFAULT CURRENT_TIMESTAMP");
+      await ensureColumn("articles", "updated_at", "DATETIME DEFAULT CURRENT_TIMESTAMP");
+
+      console.log("开始补齐 articles.created_at ...");
+      await run(`
+        UPDATE articles
+        SET created_at = CURRENT_TIMESTAMP
+        WHERE created_at IS NULL OR TRIM(created_at) = ''
+      `);
+
+      console.log("开始补齐 articles.updated_at ...");
+      await run(`
+        UPDATE articles
+        SET updated_at = CURRENT_TIMESTAMP
+        WHERE updated_at IS NULL OR TRIM(updated_at) = ''
+      `);
+    }
+
+    // favorites
+    const favoriteTables = await all(`
+      SELECT name
+      FROM sqlite_master
+      WHERE type = 'table' AND name = 'favorites'
+    `);
+
+    if (favoriteTables.length > 0) {
+      await ensureColumn("favorites", "created_at", "DATETIME DEFAULT CURRENT_TIMESTAMP");
+
+      console.log("开始补齐 favorites.created_at ...");
+      await run(`
+        UPDATE favorites
+        SET created_at = CURRENT_TIMESTAMP
+        WHERE created_at IS NULL OR TRIM(created_at) = ''
+      `);
+    }
+
+    console.log("数据库字段修复完成。");
   } catch (error) {
     console.error("修复失败：", error);
   } finally {

@@ -7,7 +7,7 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // 按你的实际数据库路径修改
-const dbPath = path.resolve(__dirname, "./database.sqlite");
+const dbPath = path.resolve(__dirname, "../database.sqlite");
 const db = new sqlite3.Database(dbPath);
 
 app.use(cors());
