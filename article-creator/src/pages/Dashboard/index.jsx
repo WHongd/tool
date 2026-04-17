@@ -32,16 +32,6 @@ export default function Dashboard() {
               setTopic={vm.setTopic}
               platform={vm.platform}
               setPlatform={vm.setPlatform}
-              audience={vm.audience}
-              setAudience={vm.setAudience}
-              preferredStyle={vm.preferredStyle}
-              setPreferredStyle={vm.setPreferredStyle}
-              target={vm.target}
-              setTarget={vm.setTarget}
-              candidateCountPerStyle={vm.candidateCountPerStyle}
-              setCandidateCountPerStyle={vm.setCandidateCountPerStyle}
-              styleOptions={vm.styleOptions}
-              targetOptions={vm.targetOptions}
               platformOptions={vm.platformOptions}
               loading={vm.titleLoading}
               onGenerate={vm.handleGenerate}

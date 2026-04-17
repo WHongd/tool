@@ -8,17 +8,39 @@ import {
   normalizeTitleItem,
 } from "../utils/dashboardTitleMappers";
 
+const PLATFORM_OPTIONS = [
+  { value: "toutiao", label: "今日头条" },
+  { value: "weitoutiao", label: "微头条" },
+  { value: "wechat", label: "微信公众号" },
+];
+
+const DEFAULT_PLATFORM = "wechat";
+
+// 过渡期先固定；后续改成从人设自动派生
+const DEFAULT_PREFERRED_STYLE = "balanced";
+const DEFAULT_TARGET = "trust";
+const FIXED_CANDIDATE_COUNT = 3;
+
 export function useDashboardTitleWorkbench() {
-  const styleOptions = useMemo(() => aiService.getTitleStyleOptions(), []);
-  const targetOptions = useMemo(() => aiService.getTitleTargetOptions(), []);
-  const platformOptions = useMemo(() => aiService.getTitlePlatformOptions(), []);
+  const styleOptions = useMemo(() => {
+    if (typeof aiService.getTitleStyleOptions === "function") {
+      return aiService.getTitleStyleOptions();
+    }
+    return [];
+  }, []);
+
+  const targetOptions = useMemo(() => {
+    if (typeof aiService.getTitleTargetOptions === "function") {
+      return aiService.getTitleTargetOptions();
+    }
+    return [];
+  }, []);
+
+  const platformOptions = useMemo(() => PLATFORM_OPTIONS, []);
 
   const [topic, setTopic] = useState("");
-  const [platform, setPlatform] = useState("wechat");
+  const [platform, setPlatform] = useState(DEFAULT_PLATFORM);
   const [audience, setAudience] = useState("新手内容创作者");
-  const [preferredStyle, setPreferredStyle] = useState("balanced");
-  const [target, setTarget] = useState("trust");
-  const [candidateCountPerStyle, setCandidateCountPerStyle] = useState(3);
 
   const [articleTitle, setArticleTitle] = useState("");
   const [articleContent, setArticleContent] = useState("");
@@ -32,19 +54,30 @@ export function useDashboardTitleWorkbench() {
   const [selectedTitle, setSelectedTitle] = useState("");
 
   const candidates = useMemo(
-    () => getTitleCandidates(titleAnalysisResult),
+    () => getTitleCandidates(titleAnalysisResult).slice(0, FIXED_CANDIDATE_COUNT),
     [titleAnalysisResult]
   );
 
-  const bestTitleItem = useMemo(
-    () => normalizeTitleItem(getBestTitleItem(titleAnalysisResult)),
-    [titleAnalysisResult]
-  );
+  const bestTitleItem = useMemo(() => {
+    const normalized = normalizeTitleItem(getBestTitleItem(titleAnalysisResult));
+    if (normalized?.title) return normalized;
+    return candidates.length ? normalizeTitleItem(candidates[0]) : null;
+  }, [titleAnalysisResult, candidates]);
 
   const modalSuggestions = useMemo(
-    () => candidates.map((item) => getTitleText(item)).filter(Boolean),
+    () =>
+      candidates
+        .map((item) => getTitleText(item))
+        .filter(Boolean)
+        .slice(0, FIXED_CANDIDATE_COUNT),
     [candidates]
   );
+
+  const currentPlatformLabel = useMemo(() => {
+    return (
+      platformOptions.find((item) => item.value === platform)?.label || "微信公众号"
+    );
+  }, [platform, platformOptions]);
 
   const syncTitleSelection = (item) => {
     const normalized = normalizeTitleItem(item);
@@ -73,9 +106,10 @@ export function useDashboardTitleWorkbench() {
         topic: topic.trim(),
         platform,
         audience,
-        preferredStyle,
-        target,
-        candidateCountPerStyle,
+        preferredStyle: DEFAULT_PREFERRED_STYLE,
+        target: DEFAULT_TARGET,
+        candidateCountPerStyle: 1,
+        candidateCount: FIXED_CANDIDATE_COUNT,
       });
 
       setTitleAnalysisResult(result);
@@ -85,6 +119,11 @@ export function useDashboardTitleWorkbench() {
         setSelectedTitle(best.title);
         setArticleTitle(best.title);
         setDetailResult(best);
+      } else {
+        const first = getTitleCandidates(result)[0];
+        if (first) {
+          syncTitleSelection(first);
+        }
       }
     } catch (error) {
       setTitleAnalysisError(error?.message || "标题生成失败");
@@ -136,12 +175,6 @@ export function useDashboardTitleWorkbench() {
     setPlatform,
     audience,
     setAudience,
-    preferredStyle,
-    setPreferredStyle,
-    target,
-    setTarget,
-    candidateCountPerStyle,
-    setCandidateCountPerStyle,
 
     articleTitle,
     setArticleTitle,
@@ -160,6 +193,8 @@ export function useDashboardTitleWorkbench() {
     candidates,
     bestTitleItem,
     modalSuggestions,
+    currentPlatformLabel,
+    fixedCandidateCount: FIXED_CANDIDATE_COUNT,
 
     handleGenerate,
     handlePickTitle,
