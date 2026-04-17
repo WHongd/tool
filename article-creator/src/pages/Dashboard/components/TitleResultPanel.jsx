@@ -22,41 +22,29 @@ function getReadableReason(reason) {
   return reason;
 }
 
-function getReadablePlatformFit(platformFit) {
-  if (!platformFit) return "";
-
-  if (typeof platformFit === "string") {
-    return platformFit;
-  }
-
-  return "";
-}
-
 export default function TitleResultPanel({
   candidates = [],
   loading,
   error,
   onPickTitle,
-  onViewDetail,
-  onOpenModal,
   selectedTitle,
   bestTitleItem,
   onUseBestTitle,
-  detail,
 }) {
   return (
     <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-lg font-semibold text-gray-900">标题选择</h2>
 
-        <button
-          type="button"
-          onClick={onOpenModal}
-          disabled={!candidates.length}
-          className="rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-700 disabled:opacity-50"
-        >
-          弹窗查看
-        </button>
+        {bestTitleItem?.title ? (
+          <button
+            type="button"
+            onClick={onUseBestTitle}
+            className="rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-700"
+          >
+            使用推荐标题
+          </button>
+        ) : null}
       </div>
 
       {loading ? (
@@ -87,12 +75,14 @@ export default function TitleResultPanel({
             const readableReason = getReadableReason(normalized.reason);
 
             return (
-              <div
+              <button
                 key={`${title}-${index}`}
-                className={`rounded-2xl border p-4 transition ${
+                type="button"
+                onClick={() => onPickTitle(item)}
+                className={`rounded-2xl border p-4 text-left transition ${
                   isSelected
                     ? "border-gray-900 bg-gray-50"
-                    : "border-gray-200 bg-white"
+                    : "border-gray-200 bg-white hover:border-gray-300"
                 }`}
               >
                 <div className="flex items-center justify-between gap-2">
@@ -100,11 +90,19 @@ export default function TitleResultPanel({
                     {getStyleLabel(normalized.style)}
                   </div>
 
-                  {isBest ? (
-                    <span className="rounded-full bg-gray-900 px-2 py-1 text-[10px] text-white">
-                      推荐
-                    </span>
-                  ) : null}
+                  <div className="flex items-center gap-2">
+                    {isBest ? (
+                      <span className="rounded-full bg-gray-900 px-2 py-1 text-[10px] text-white">
+                        推荐
+                      </span>
+                    ) : null}
+
+                    {isSelected ? (
+                      <span className="rounded-full bg-gray-100 px-2 py-1 text-[10px] text-gray-700">
+                        当前
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
 
                 <div className="mt-3 min-h-[72px] text-sm font-medium leading-6 text-gray-900">
@@ -116,77 +114,17 @@ export default function TitleResultPanel({
                     {readableReason}
                   </div>
                 ) : null}
-
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => onPickTitle(item)}
-                    className="rounded-lg bg-gray-900 px-3 py-2 text-xs text-white"
-                  >
-                    {isSelected ? "当前标题" : "设为标题"}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => onViewDetail(item)}
-                    className="rounded-lg border border-gray-300 px-3 py-2 text-xs text-gray-700"
-                  >
-                    查看说明
-                  </button>
-                </div>
-              </div>
+              </button>
             );
           })}
         </div>
       ) : null}
 
-      {bestTitleItem?.title ? (
-        <div className="mt-5 rounded-2xl border border-gray-200 bg-gray-50 p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <div className="text-xs text-gray-500">推荐标题</div>
-              <div className="mt-1 text-sm font-semibold text-gray-900">
-                {bestTitleItem.title}
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={onUseBestTitle}
-              className="rounded-lg bg-gray-900 px-3 py-2 text-xs text-white"
-            >
-              使用推荐标题
-            </button>
-          </div>
-        </div>
-      ) : null}
-
-      {detail?.title ? (
+      {selectedTitle ? (
         <div className="mt-5 rounded-2xl border border-dashed border-gray-300 bg-white p-4">
-          <div className="text-xs text-gray-500">标题说明</div>
-
+          <div className="text-xs text-gray-500">当前标题</div>
           <div className="mt-2 text-sm font-medium text-gray-900">
-            {detail.title}
-          </div>
-
-          {getReadableReason(detail.reason) ? (
-            <div className="mt-3 text-sm leading-6 text-gray-600">
-              {getReadableReason(detail.reason)}
-            </div>
-          ) : null}
-
-          <div className="mt-3 flex flex-wrap gap-2 text-xs text-gray-500">
-            {detail.style ? (
-              <span className="rounded-full bg-gray-100 px-2 py-1">
-                风格：{getStyleLabel(detail.style)}
-              </span>
-            ) : null}
-
-            {getReadablePlatformFit(detail.platformFit) ? (
-              <span className="rounded-full bg-gray-100 px-2 py-1">
-                平台适配：{getReadablePlatformFit(detail.platformFit)}
-              </span>
-            ) : null}
+            {selectedTitle}
           </div>
         </div>
       ) : null}

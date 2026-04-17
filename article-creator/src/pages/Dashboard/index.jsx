@@ -28,12 +28,9 @@ export default function Dashboard() {
             loading={vm.titleLoading}
             error={vm.titleAnalysisError}
             onPickTitle={vm.handlePickTitle}
-            onViewDetail={vm.handleOpenDetail}
-            onOpenModal={() => vm.setTitleModalOpen(true)}
             selectedTitle={vm.selectedTitle}
             bestTitleItem={vm.bestTitleItem}
             onUseBestTitle={vm.handleUseBestTitle}
-            detail={vm.detailResult}
           />
         </section>
 
