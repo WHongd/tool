@@ -9,6 +9,12 @@ export default function TitleBriefForm(props) {
     onGenerate,
   } = props;
 
+  const hasTopic = Boolean(topic.trim());
+
+  const handleClearTopic = () => {
+    setTopic("");
+  };
+
   return (
     <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
       <div className="space-y-4">
@@ -42,14 +48,26 @@ export default function TitleBriefForm(props) {
             })}
           </div>
 
-          <button
-            type="button"
-            onClick={onGenerate}
-            disabled={loading || !topic.trim()}
-            className="rounded-xl bg-gray-900 px-4 py-3 text-sm font-medium text-white disabled:opacity-60 sm:min-w-[120px]"
-          >
-            {loading ? "生成中..." : "生成标题"}
-          </button>
+          <div className="flex items-center gap-2">
+            {hasTopic ? (
+              <button
+                type="button"
+                onClick={handleClearTopic}
+                className="rounded-xl border border-gray-300 px-4 py-3 text-sm text-gray-700"
+              >
+                清空主题
+              </button>
+            ) : null}
+
+            <button
+              type="button"
+              onClick={onGenerate}
+              disabled={loading || !hasTopic}
+              className="rounded-xl bg-gray-900 px-4 py-3 text-sm font-medium text-white disabled:opacity-60 sm:min-w-[120px]"
+            >
+              {loading ? "生成中..." : "生成标题"}
+            </button>
+          </div>
         </div>
       </div>
     </section>

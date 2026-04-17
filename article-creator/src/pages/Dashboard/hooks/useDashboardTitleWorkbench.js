@@ -16,8 +16,6 @@ const PLATFORM_OPTIONS = [
 ];
 
 const DEFAULT_PLATFORM = "wechat";
-
-// 过渡期先固定；后续改成从人设自动派生
 const DEFAULT_PREFERRED_STYLE = "balanced";
 const DEFAULT_TARGET = "trust";
 const FIXED_CANDIDATE_COUNT = 3;
@@ -56,21 +54,20 @@ export function useDashboardTitleWorkbench() {
 
   const platformOptions = useMemo(() => PLATFORM_OPTIONS, []);
 
-  const [topic, setTopic] = useState("");
-  const [platform, setPlatform] = useState(DEFAULT_PLATFORM);
+  const [topic, setTopicState] = useState("");
+  const [platform, setPlatformState] = useState(DEFAULT_PLATFORM);
   const [audience, setAudience] = useState("新手内容创作者");
 
   const [articleTitle, setArticleTitle] = useState("");
-  const [articleContent, setArticleContent] = useState("");
+  const [articleContent, setArticleContentState] = useState("");
+  const [contentDraftMap, setContentDraftMap] = useState({});
 
-  const [titleModalOpen, setTitleModalOpen] = useState(false);
   const [titleLoading, setTitleLoading] = useState(false);
   const [titleAnalysisResult, setTitleAnalysisResult] = useState(null);
   const [titleAnalysisError, setTitleAnalysisError] = useState("");
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [detailResult, setDetailResult] = useState(null);
   const [selectedTitle, setSelectedTitle] = useState("");
   const [contentLoading, setContentLoading] = useState(false);
+  const [creationSessionKey, setCreationSessionKey] = useState(0);
 
   const candidates = useMemo(
     () => getTopThreeCandidates(titleAnalysisResult),
@@ -83,20 +80,68 @@ export function useDashboardTitleWorkbench() {
     return candidates.length ? normalizeTitleItem(candidates[0]) : null;
   }, [titleAnalysisResult, candidates]);
 
-  const modalSuggestions = useMemo(
-    () =>
-      candidates
-        .map((item) => getTitleText(item))
-        .filter(Boolean)
-        .slice(0, FIXED_CANDIDATE_COUNT),
-    [candidates]
-  );
+  const clearCurrentFlow = () => {
+    setTitleAnalysisResult(null);
+    setTitleAnalysisError("");
+    setSelectedTitle("");
+    setArticleTitle("");
+    setArticleContentState("");
+    setContentDraftMap({});
+  };
 
-  const currentPlatformLabel = useMemo(() => {
-    return (
-      platformOptions.find((item) => item.value === platform)?.label || "微信公众号"
-    );
-  }, [platform, platformOptions]);
+  const handleStartNewCreation = () => {
+    setTopicState("");
+    setPlatformState(DEFAULT_PLATFORM);
+    clearCurrentFlow();
+    setCreationSessionKey((prev) => prev + 1);
+  };
+
+  const setTopic = (nextTopic) => {
+    const normalizedNext = nextTopic ?? "";
+    const normalizedCurrent = topic ?? "";
+
+    if (normalizedNext === normalizedCurrent) return;
+
+    setTopicState(normalizedNext);
+    clearCurrentFlow();
+  };
+
+  const setPlatform = (nextPlatform) => {
+    if (!nextPlatform || nextPlatform === platform) return;
+    setPlatformState(nextPlatform);
+    clearCurrentFlow();
+  };
+
+  const setArticleContent = (value) => {
+    setArticleContentState(value);
+
+    if (articleTitle) {
+      setContentDraftMap((prev) => ({
+        ...prev,
+        [articleTitle]: value,
+      }));
+    }
+  };
+
+  const switchToTitle = (nextTitle) => {
+    if (!nextTitle) return;
+
+    if (articleTitle) {
+      setContentDraftMap((prev) => ({
+        ...prev,
+        [articleTitle]: articleContent,
+      }));
+    }
+
+    setSelectedTitle(nextTitle);
+    setArticleTitle(nextTitle);
+
+    setContentDraftMap((prev) => {
+      const nextContent = prev[nextTitle] ?? "";
+      setArticleContentState(nextContent);
+      return prev;
+    });
+  };
 
   const syncTitleSelection = (item) => {
     const normalized = normalizeTitleItem(item);
@@ -104,9 +149,7 @@ export function useDashboardTitleWorkbench() {
 
     if (!title) return;
 
-    setSelectedTitle(title);
-    setArticleTitle(title);
-    setDetailResult(normalized);
+    switchToTitle(title);
   };
 
   const handleGenerate = async () => {
@@ -117,8 +160,6 @@ export function useDashboardTitleWorkbench() {
 
     setTitleLoading(true);
     setTitleAnalysisError("");
-    setDetailResult(null);
-    setSelectedTitle("");
 
     try {
       const result = await aiService.generateTitleAnalysis({
@@ -135,9 +176,7 @@ export function useDashboardTitleWorkbench() {
 
       const best = normalizeTitleItem(getBestTitleItem(result));
       if (best?.title) {
-        setSelectedTitle(best.title);
-        setArticleTitle(best.title);
-        setDetailResult(best);
+        switchToTitle(best.title);
       } else {
         const first = getTitleCandidates(result)[0];
         if (first) {
@@ -156,25 +195,10 @@ export function useDashboardTitleWorkbench() {
     if (typeof item === "string") {
       const found = findCandidateByTitle(titleAnalysisResult, item);
       syncTitleSelection(found || item);
-      setTitleModalOpen(false);
       return;
     }
 
     syncTitleSelection(item);
-    setTitleModalOpen(false);
-  };
-
-  const handleOpenDetail = async (item) => {
-    setDetailLoading(true);
-    try {
-      const normalized = normalizeTitleItem(item);
-      if (normalized?.title) {
-        setSelectedTitle(normalized.title);
-        setDetailResult(normalized);
-      }
-    } finally {
-      setDetailLoading(false);
-    }
   };
 
   const handleUseBestTitle = () => {
@@ -193,7 +217,18 @@ export function useDashboardTitleWorkbench() {
         articleTitle,
       });
 
-      setArticleContent(opening);
+      const currentContent = articleContent.trim();
+
+      if (!currentContent) {
+        setArticleContent(opening);
+        return;
+      }
+
+      const mergedContent = `${opening}
+
+${currentContent}`;
+
+      setArticleContent(mergedContent);
     } finally {
       setContentLoading(false);
     }
@@ -215,27 +250,23 @@ export function useDashboardTitleWorkbench() {
     setArticleTitle,
     articleContent,
     setArticleContent,
+    contentDraftMap,
 
-    titleModalOpen,
-    setTitleModalOpen,
     titleLoading,
     titleAnalysisResult,
     titleAnalysisError,
-    detailLoading,
-    detailResult,
     selectedTitle,
     contentLoading,
+    creationSessionKey,
 
     candidates,
     bestTitleItem,
-    modalSuggestions,
-    currentPlatformLabel,
     fixedCandidateCount: FIXED_CANDIDATE_COUNT,
 
     handleGenerate,
     handlePickTitle,
-    handleOpenDetail,
     handleUseBestTitle,
     handleGenerateOpening,
+    handleStartNewCreation,
   };
 }
