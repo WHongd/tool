@@ -3,8 +3,8 @@ import aiService from "../../../services/aiService";
 import {
   findCandidateByTitle,
   getBestTitleItem,
-  getTitleCandidates,
   getTitleText,
+  getTopThreeCandidates,
   normalizeTitleItem,
 } from "../utils/dashboardTitleMappers";
 
@@ -52,11 +52,10 @@ export function useDashboardTitleWorkbench() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailResult, setDetailResult] = useState(null);
   const [selectedTitle, setSelectedTitle] = useState("");
-
-  const candidates = useMemo(
-    () => getTitleCandidates(titleAnalysisResult).slice(0, FIXED_CANDIDATE_COUNT),
-    [titleAnalysisResult]
-  );
+const candidates = useMemo(
+  () => getTopThreeCandidates(titleAnalysisResult),
+  [titleAnalysisResult]
+);
 
   const bestTitleItem = useMemo(() => {
     const normalized = normalizeTitleItem(getBestTitleItem(titleAnalysisResult));
