@@ -50,11 +50,22 @@ export default function TitleDetailPanel({ loading, detail, selectedTitle }) {
               <div className="mt-1 leading-6">{detail.suggestion}</div>
             </div>
           ) : null}
-
-          {detail.score !== null && detail.score !== undefined ? (
+          {detail.score ? (
             <div>
               <div className="text-xs text-gray-500">评分</div>
-              <div className="mt-1">{detail.score}</div>
+
+              {typeof detail.score === "object" ? (
+                <div className="mt-2 space-y-1 text-xs text-gray-600">
+                  {Object.entries(detail.score).map(([key, value]) => (
+                    <div key={key} className="flex justify-between">
+                      <span>{key}</span>
+                      <span>{value}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="mt-1">{detail.score}</div>
+              )}
             </div>
           ) : null}
         </div>
