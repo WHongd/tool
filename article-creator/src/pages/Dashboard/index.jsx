@@ -70,6 +70,7 @@ export default function Dashboard() {
             <BestTitleCard
               articleTitle={vm.articleTitle}
               result={vm.titleAnalysisResult}
+              bestTitleItem={vm.bestTitleItem}
               onUseBestTitle={vm.handleUseBestTitle}
             />
 

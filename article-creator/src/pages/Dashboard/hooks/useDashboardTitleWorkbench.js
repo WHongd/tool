@@ -1,13 +1,12 @@
 import { useMemo, useState } from "react";
 import aiService from "../../../services/aiService";
-
-function getCandidates(result) {
-  return Array.isArray(result?.data?.candidates) ? result.data.candidates : [];
-}
-
-function getBestTitle(result) {
-  return result?.data?.bestTitle || getCandidates(result)[0] || null;
-}
+import {
+  findCandidateByTitle,
+  getBestTitleItem,
+  getTitleCandidates,
+  getTitleText,
+  normalizeTitleItem,
+} from "../utils/dashboardTitleMappers";
 
 export function useDashboardTitleWorkbench() {
   const styleOptions = useMemo(() => aiService.getTitleStyleOptions(), []);
@@ -32,6 +31,32 @@ export function useDashboardTitleWorkbench() {
   const [detailResult, setDetailResult] = useState(null);
   const [selectedTitle, setSelectedTitle] = useState("");
 
+  const candidates = useMemo(
+    () => getTitleCandidates(titleAnalysisResult),
+    [titleAnalysisResult]
+  );
+
+  const bestTitleItem = useMemo(
+    () => normalizeTitleItem(getBestTitleItem(titleAnalysisResult)),
+    [titleAnalysisResult]
+  );
+
+  const modalSuggestions = useMemo(
+    () => candidates.map((item) => getTitleText(item)).filter(Boolean),
+    [candidates]
+  );
+
+  const syncTitleSelection = (item) => {
+    const normalized = normalizeTitleItem(item);
+    const title = getTitleText(normalized);
+
+    if (!title) return;
+
+    setSelectedTitle(title);
+    setArticleTitle(title);
+    setDetailResult(normalized);
+  };
+
   const handleGenerate = async () => {
     if (!topic.trim()) {
       setTitleAnalysisError("请先输入主题");
@@ -40,6 +65,8 @@ export function useDashboardTitleWorkbench() {
 
     setTitleLoading(true);
     setTitleAnalysisError("");
+    setDetailResult(null);
+    setSelectedTitle("");
 
     try {
       const result = await aiService.generateTitleAnalysis({
@@ -52,58 +79,51 @@ export function useDashboardTitleWorkbench() {
       });
 
       setTitleAnalysisResult(result);
-      const best = getBestTitle(result);
+
+      const best = normalizeTitleItem(getBestTitleItem(result));
       if (best?.title) {
         setSelectedTitle(best.title);
+        setArticleTitle(best.title);
         setDetailResult(best);
       }
     } catch (error) {
       setTitleAnalysisError(error?.message || "标题生成失败");
+      setTitleAnalysisResult(null);
     } finally {
       setTitleLoading(false);
     }
   };
 
   const handlePickTitle = (item) => {
-    const title = typeof item === "string" ? item : item?.title || "";
-    if (!title) return;
-
-    setSelectedTitle(title);
-    setArticleTitle(title);
-
-    const found = getCandidates(titleAnalysisResult).find(
-      (candidate) => candidate?.title === title
-    );
-
-    if (found) {
-      setDetailResult(found);
+    if (typeof item === "string") {
+      const found = findCandidateByTitle(titleAnalysisResult, item);
+      syncTitleSelection(found || item);
+      setTitleModalOpen(false);
+      return;
     }
 
+    syncTitleSelection(item);
     setTitleModalOpen(false);
   };
 
   const handleOpenDetail = async (item) => {
     setDetailLoading(true);
     try {
-      setSelectedTitle(item?.title || "");
-      setDetailResult(item || null);
+      const normalized = normalizeTitleItem(item);
+      if (normalized?.title) {
+        setSelectedTitle(normalized.title);
+        setDetailResult(normalized);
+      }
     } finally {
       setDetailLoading(false);
     }
   };
 
   const handleUseBestTitle = () => {
-    const best = getBestTitle(titleAnalysisResult);
-    if (best?.title) {
-      setArticleTitle(best.title);
-      setSelectedTitle(best.title);
-      setDetailResult(best);
+    if (bestTitleItem?.title) {
+      syncTitleSelection(bestTitleItem);
     }
   };
-
-  const modalSuggestions = useMemo(() => {
-    return getCandidates(titleAnalysisResult).map((item) => item.title);
-  }, [titleAnalysisResult]);
 
   return {
     styleOptions,
@@ -137,6 +157,8 @@ export function useDashboardTitleWorkbench() {
     detailResult,
     selectedTitle,
 
+    candidates,
+    bestTitleItem,
     modalSuggestions,
 
     handleGenerate,
